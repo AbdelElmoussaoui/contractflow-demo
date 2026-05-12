@@ -155,6 +155,8 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-contractflow}:${POSTGRES_PASSWORD:-contractflow_secret}@postgres:5432/${POSTGRES_DB:-contractflow}
       # LangGraph checkpointer needs psycopg3 format (pas asyncpg)
@@ -163,14 +165,15 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin_secret}
       MINIO_SECURE: "false"
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_API_KEY: ollama
       SIGNATURE_MOCK_URL: http://signature-mock:8002
       API_SERVICE_URL: http://api:8000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: http://langfuse:3000
-      LLM_MODEL_FAST: ${LLM_MODEL_FAST:-claude-haiku-4-5-20251001}
-      LLM_MODEL_SMART: ${LLM_MODEL_SMART:-claude-sonnet-4-6}
+      LLM_MODEL_FAST: ${LLM_MODEL_FAST:-qwen2.5:7b}
+      LLM_MODEL_SMART: ${LLM_MODEL_SMART:-qwen2.5:14b}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8001:8001"
@@ -201,6 +204,42 @@ services:
       retries: 5
 
   # ──────────────────────────────────────────────
+  # LLM local (Ollama — 100% open source, gratuit)
+  # ──────────────────────────────────────────────
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Télécharge les modèles une seule fois (cached dans le volume ollama_data)
+  # Premier démarrage : ~5 min selon la connexion
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: >
+      /bin/sh -c "
+        ollama pull ${LLM_MODEL_FAST:-qwen2.5:7b} &&
+        ollama pull ${LLM_MODEL_SMART:-qwen2.5:14b} &&
+        echo 'Modèles Ollama prêts.'
+      "
+
+  # ──────────────────────────────────────────────
   # Frontend
   # ──────────────────────────────────────────────
 
@@ -224,3 +263,4 @@ volumes:
   postgres_data:
   minio_data:
   clickhouse_data:
+  ollama_data:

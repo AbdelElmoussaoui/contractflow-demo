@@ -13,16 +13,21 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin_secret"
     minio_secure: bool = False
 
-    anthropic_api_key: str
+    # URL du serveur Ollama (dans Docker : http://ollama:11434/v1)
+    llm_base_url: str = "http://ollama:11434/v1"
+    # Ollama n'a pas besoin d'une vraie clé, mais le champ est obligatoire
+    llm_api_key: str = "ollama"
+
+    # Modèles recommandés (voir docker-compose.yml → ollama-init)
+    llm_model_fast: str = "qwen2.5:7b"    # léger, rapide — extraction
+    llm_model_smart: str = "qwen2.5:14b"  # plus précis — classification
+
     signature_mock_url: str = "http://localhost:8002"
     api_service_url: str = "http://localhost:8000"
 
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = "http://localhost:3002"
-
-    llm_model_fast: str = "claude-haiku-4-5-20251001"
-    llm_model_smart: str = "claude-sonnet-4-6"
 
     log_level: str = "INFO"
 
