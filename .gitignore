@@ -1,0 +1,39 @@
+# Secrets — jamais commités
+.env
+*.pem
+*.key
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Docker volumes (si montés localement)
+postgres_data/
+minio_data/
+clickhouse_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
