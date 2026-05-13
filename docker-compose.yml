@@ -215,10 +215,11 @@ services:
     ports:
       - "11434:11434"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      test: ["CMD", "ollama", "list"]
       interval: 10s
-      timeout: 5s
-      retries: 10
+      timeout: 30s
+      retries: 15
+      start_period: 20s
 
   # Télécharge les modèles une seule fois (cached dans le volume ollama_data)
   # Premier démarrage : ~5 min selon la connexion
