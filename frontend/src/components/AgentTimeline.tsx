@@ -2,12 +2,13 @@ import {
   FileText, Search, Tag, UserCheck, Mail,
   PenLine, ShieldCheck, Archive, Clock, Zap,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { cn, STEP_LABEL, formatDuration } from '../lib/utils'
 import { StepBadge } from './ui/Badge'
 import { Spinner } from './ui/Spinner'
 import type { AgentStep, StepStatus } from '../lib/types'
 
-const STEP_ICON: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+const STEP_ICON: Record<string, LucideIcon> = {
   load_pdf: FileText,
   extract_metadata: Search,
   classify: Tag,
