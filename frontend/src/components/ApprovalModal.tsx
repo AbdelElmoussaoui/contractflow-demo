@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Plus, Trash2, GripVertical, Sparkles, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, Trash2, Sparkles, CheckCircle2 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Modal } from './ui/Modal'
 import { Spinner } from './ui/Spinner'
@@ -16,10 +16,16 @@ export function ApprovalModal({ open, onClose, contract }: Props) {
   const proposed = contract.metadata?.proposed_workflow
   const justification = proposed?.justification
 
-  const [signers, setSigners] = useState<WorkflowSigner[]>(() =>
-    proposed?.signers?.map(s => ({ ...s })) ?? []
-  )
+  const [signers, setSigners] = useState<WorkflowSigner[]>([])
   const [success, setSuccess] = useState(false)
+
+  // Reset state each time the modal opens
+  useEffect(() => {
+    if (open) {
+      setSigners(proposed?.signers?.map(s => ({ ...s })) ?? [])
+      setSuccess(false)
+    }
+  }, [open, proposed])
 
   const queryClient = useQueryClient()
   const approve = useMutation({

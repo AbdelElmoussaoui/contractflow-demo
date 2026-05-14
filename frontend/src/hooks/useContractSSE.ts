@@ -18,12 +18,15 @@ export function useContractSSE(contractId: string | undefined) {
         const data = JSON.parse(e.data) as ContractDetail
         queryClient.setQueryData(['contract', contractId], data)
         if (TERMINAL.has(data.status)) es.close()
-      } catch {
-        // ignore parse errors
+      } catch (err) {
+        console.warn('[SSE] Failed to parse event:', err)
       }
     }
 
-    es.onerror = () => es.close()
+    es.onerror = (err) => {
+      console.warn('[SSE] Connection error, closing:', err)
+      es.close()
+    }
 
     return () => es.close()
   }, [contractId, queryClient])

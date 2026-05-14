@@ -1,8 +1,8 @@
-import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.types import Command
 from pydantic import BaseModel
@@ -18,7 +18,18 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-app = FastAPI(title="ContractFlow Agent", version="1.0.0")
+
+# ── Lifespan (replaces deprecated @app.on_event) ─────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await get_graph()
+    logger.info("agent_ready")
+    yield
+    await close_graph()
+
+
+app = FastAPI(title="ContractFlow Agent", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,19 +37,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ── Lifespan ─────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup():
-    await get_graph()
-    logger.info("agent_ready")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await close_graph()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,14 +68,14 @@ class ProcessRequest(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    approved_workflow: dict  # {"signers": [{"name": ..., "email": ..., "order": ...}]}
+    approved_workflow: dict
 
 
 class SignatureWebhook(BaseModel):
     envelope_id: str
     contract_id: str
     status: str
-    signers: list[dict]  # [{name, email, signed_at, signature_xml}]
+    signers: list[dict]
 
 
 @app.get("/health")
@@ -93,16 +91,24 @@ async def process_contract(body: ProcessRequest, background_tasks: BackgroundTas
 
 
 @app.post("/approve/{contract_id}")
-async def approve_workflow(contract_id: str, body: ApprovalRequest, background_tasks: BackgroundTasks):
+async def approve_workflow(
+    contract_id: str,
+    body: ApprovalRequest,
+    background_tasks: BackgroundTasks,
+):
     logger.info("approve_request", contract_id=contract_id)
-    resume_value = {"approved_workflow": body.approved_workflow}
-    background_tasks.add_task(_resume_graph, contract_id, resume_value)
+    background_tasks.add_task(_resume_graph, contract_id, {"approved_workflow": body.approved_workflow})
     return {"status": "resuming", "contract_id": contract_id}
 
 
 @app.post("/webhooks/signature")
 async def signature_webhook(body: SignatureWebhook, background_tasks: BackgroundTasks):
-    logger.info("signature_webhook", contract_id=body.contract_id, status=body.status, envelope_id=body.envelope_id)
+    logger.info(
+        "signature_webhook",
+        contract_id=body.contract_id,
+        status=body.status,
+        envelope_id=body.envelope_id,
+    )
 
     if body.status != "completed":
         return {"status": "ignored", "reason": "envelope not yet completed"}

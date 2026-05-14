@@ -1,18 +1,24 @@
 """Helpers to update the shared PostgreSQL database from agent nodes."""
 from __future__ import annotations
 
-import time
-from contextlib import asynccontextmanager
+import json
 from datetime import datetime, timezone
-from uuid import UUID
 
-from sqlalchemy import select, text, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 from app.database import AsyncSessionLocal
 
+# JSONB columns in contract_metadata — require explicit cast in raw SQL
+_JSONB_COLS = frozenset({"parties", "sensitive_clauses", "proposed_workflow", "approved_workflow"})
 
-# ── ORM-free helpers (raw SQL for simplicity in background tasks) ─────────────
+# Allowed column names for contract_metadata to prevent SQL injection
+_ALLOWED_META_COLS = frozenset({
+    "parties", "amount", "currency", "start_date", "end_date",
+    "duration_months", "jurisdiction", "payment_terms",
+    "contract_type", "risk_level", "classification_justification",
+    "sensitive_clauses", "proposed_workflow", "approved_workflow",
+})
+
 
 async def update_contract_status(contract_id: str, status: str) -> None:
     async with AsyncSessionLocal() as db:
@@ -24,21 +30,33 @@ async def update_contract_status(contract_id: str, status: str) -> None:
 
 
 async def upsert_contract_metadata(contract_id: str, data: dict) -> None:
+    # Validate keys against whitelist to prevent SQL injection
+    unknown = set(data) - _ALLOWED_META_COLS
+    if unknown:
+        raise ValueError(f"Unknown contract_metadata columns: {unknown}")
+
     async with AsyncSessionLocal() as db:
         existing = await db.execute(
             text("SELECT id FROM contract_metadata WHERE contract_id = :cid"),
             {"cid": contract_id},
         )
         row = existing.fetchone()
+
+        def _col_assign(k: str) -> str:
+            return f"{k} = :{k}::jsonb" if k in _JSONB_COLS else f"{k} = :{k}"
+
+        def _col_value(k: str) -> str:
+            return f":{k}::jsonb" if k in _JSONB_COLS else f":{k}"
+
         if row:
-            set_clauses = ", ".join(f"{k} = :{k}" for k in data)
+            set_clauses = ", ".join(_col_assign(k) for k in data)
             await db.execute(
                 text(f"UPDATE contract_metadata SET {set_clauses} WHERE contract_id = :contract_id"),
                 {**data, "contract_id": contract_id},
             )
         else:
             cols = "contract_id, " + ", ".join(data.keys())
-            vals = ":contract_id, " + ", ".join(f":{k}" for k in data)
+            vals = ":contract_id, " + ", ".join(_col_value(k) for k in data)
             await db.execute(
                 text(f"INSERT INTO contract_metadata ({cols}) VALUES ({vals})"),
                 {**data, "contract_id": contract_id},
@@ -79,7 +97,7 @@ async def complete_agent_step(
             ),
             {
                 "status": status,
-                "out": __import__("json").dumps(output_data) if output_data else None,
+                "out": json.dumps(output_data) if output_data else None,
                 "err": error_message,
                 "ti": tokens_input,
                 "to_": tokens_output,
@@ -101,7 +119,6 @@ async def set_step_waiting(step_id: str) -> None:
 
 async def upsert_signatures(contract_id: str, signers: list[dict], envelope_id: str) -> None:
     async with AsyncSessionLocal() as db:
-        # Remove previous pending signatures (idempotent re-send case)
         await db.execute(
             text("DELETE FROM signatures WHERE contract_id = :cid AND status = 'pending'"),
             {"cid": contract_id},
@@ -192,7 +209,7 @@ async def save_archive(
                 "dh": document_hash,
                 "psh": previous_seal_hash,
                 "sh": seal_hash,
-                "rd": __import__("json").dumps(receipt_data),
+                "rd": json.dumps(receipt_data),
             },
         )
         await db.commit()
