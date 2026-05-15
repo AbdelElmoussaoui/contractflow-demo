@@ -171,7 +171,7 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: http://langfuse:3000
       LLM_MODEL_FAST: ${LLM_MODEL_FAST:-llama3.2:3b}
-      LLM_MODEL_SMART: ${LLM_MODEL_SMART:-qwen2.5:7b}
+      LLM_MODEL_SMART: ${LLM_MODEL_SMART:-llama3.2:3b}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8001:8001"
@@ -235,8 +235,9 @@ services:
       /bin/sh -c "
         sleep 5 &&
         ollama pull llama3.2:3b &&
-        ollama pull qwen2.5:7b &&
-        echo 'Modèles prêts.'
+        ollama pull qwen2.5:7b ||
+        echo 'qwen2.5:7b indisponible - llama3.2:3b sera utilise pour les deux modeles' &&
+        echo 'Init terminee.'
       "
 
   # ──────────────────────────────────────────────

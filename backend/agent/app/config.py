@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     llm_api_key: str = "ollama"
 
     # Modèles recommandés (voir docker-compose.yml → ollama-init)
-    llm_model_fast: str = "llama3.2:3b"   # léger, rapide — extraction
-    llm_model_smart: str = "qwen2.5:7b"  # plus précis — classification
+    llm_model_fast: str = "llama3.2:3b"   # extraction
+    llm_model_smart: str = "llama3.2:3b"  # classification (upgrade vers qwen2.5:7b si dispo)
 
     signature_mock_url: str = "http://localhost:8002"
     api_service_url: str = "http://localhost:8000"
