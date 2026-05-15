@@ -61,10 +61,14 @@ async def get_graph():
     if _graph is not None:
         return _graph
 
+    # autocommit=True requis : CREATE INDEX CONCURRENTLY ne peut pas
+    # s'exécuter dans un bloc de transaction (utilisé par checkpointer.setup())
+    # prepare_threshold=0 évite les conflits avec les prepared statements
     _pool = AsyncConnectionPool(
         conninfo=settings.database_url_sync,
         max_size=10,
         open=False,
+        kwargs={"autocommit": True, "prepare_threshold": 0},
     )
     await _pool.open()
 
