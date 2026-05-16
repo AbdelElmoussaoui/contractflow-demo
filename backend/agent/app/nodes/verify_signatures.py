@@ -1,4 +1,5 @@
 """Node 7 — verify XAdES signatures and update DB."""
+import asyncio
 import hashlib
 import time
 import xml.etree.ElementTree as ET
@@ -64,7 +65,8 @@ async def verify_signatures(state: ContractState) -> dict:
         if not info:
             raise ValueError("Contract not found")
         bucket, key = info
-        document_bytes = download_file(bucket, key)
+        loop = asyncio.get_event_loop()
+        document_bytes = await loop.run_in_executor(None, download_file, bucket, key)
 
         sigs = state.get("signatures_data", [])
         verified_count = 0

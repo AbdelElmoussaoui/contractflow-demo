@@ -1,4 +1,5 @@
 """Node 8 — compute chained seal and archive the contract."""
+import asyncio
 import hashlib
 import json
 import time
@@ -29,7 +30,8 @@ async def archive(state: ContractState) -> dict:
         if not info:
             raise ValueError("Contract not found")
         bucket, key = info
-        document_bytes = download_file(bucket, key)
+        loop = asyncio.get_event_loop()
+        document_bytes = await loop.run_in_executor(None, download_file, bucket, key)
 
         document_hash = hashlib.sha256(document_bytes).hexdigest()
         previous_seal = await db_svc.get_latest_seal_hash()
@@ -57,11 +59,9 @@ async def archive(state: ContractState) -> dict:
         }
 
         archive_key = f"{contract_id}/archive-receipt.json"
-        upload_file(
-            settings.bucket_archives,
-            archive_key,
-            json.dumps(receipt, ensure_ascii=False, indent=2).encode(),
-            content_type="application/json",
+        receipt_bytes = json.dumps(receipt, ensure_ascii=False, indent=2).encode()
+        await loop.run_in_executor(
+            None, upload_file, settings.bucket_archives, archive_key, receipt_bytes, "application/json"
         )
 
         await db_svc.save_archive(
