@@ -35,4 +35,5 @@ TOOL: dict = {
 
 
 def user_prompt(pdf_text: str) -> str:
-    return f"Analyse ce contrat et extrait les métadonnées demandées :\n\n{pdf_text[:12000]}"
+    # Limité à 4000 chars pour les petits modèles locaux (CPU)
+    return f"Analyse ce contrat et extrait les métadonnées demandées :\n\n{pdf_text[:4000]}"

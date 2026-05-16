@@ -73,6 +73,6 @@ def user_prompt(pdf_text: str, metadata: dict) -> str:
     return (
         f"Voici un contrat à analyser.\n\n"
         f"Métadonnées extraites :\n{json.dumps(metadata, ensure_ascii=False, indent=2)}\n\n"
-        f"Texte du contrat :\n{pdf_text[:10000]}\n\n"
+        f"Texte du contrat :\n{pdf_text[:3000]}\n\n"
         "Classe ce contrat, identifie les clauses sensibles et propose un circuit de validation adapté."
     )

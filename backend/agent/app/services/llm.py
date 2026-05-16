@@ -1,12 +1,14 @@
-"""LLM client — OpenAI-compatible (Ollama, Groq, Together AI, etc.)
+"""LLM client — OpenAI-compatible (Ollama, Groq, etc.)
 
-Les prompts définissent les outils au format Anthropic (input_schema).
-Ce module les convertit automatiquement en format OpenAI (parameters)
-avant l'appel, et renvoie toujours (result_dict, tokens_in, tokens_out).
+On utilise response_format=json_object plutôt que tool_use :
+- Plus compatible avec les petits modèles (llama3.2:3b, mistral, etc.)
+- Plus rapide sur CPU (pas d'overhead de parsing d'outils)
+- Le schéma JSON est défini dans le prompt système
 """
 from __future__ import annotations
 
 import json
+import re
 
 import structlog
 from openai import AsyncOpenAI
@@ -28,16 +30,18 @@ def get_client() -> AsyncOpenAI:
     return _client
 
 
-def _to_openai_tool(anthropic_tool: dict) -> dict:
-    """Convertit le format Anthropic → format OpenAI function-calling."""
-    return {
-        "type": "function",
-        "function": {
-            "name": anthropic_tool["name"],
-            "description": anthropic_tool.get("description", ""),
-            "parameters": anthropic_tool["input_schema"],
-        },
-    }
+def _extract_json(text: str) -> dict:
+    """Extrait un objet JSON depuis une réponse texte (gère les blocs markdown)."""
+    text = text.strip()
+    # Supprimer les blocs de code markdown ```json ... ```
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
+    text = text.strip()
+    # Trouver le premier { ... } dans la réponse
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        text = match.group(0)
+    return json.loads(text)
 
 
 async def call_tool(
@@ -46,20 +50,31 @@ async def call_tool(
     system: str,
     user: str,
     tool: dict,
-    max_tokens: int = 4096,
+    max_tokens: int = 2048,
     trace_name: str | None = None,
 ) -> tuple[dict, int, int]:
-    """Appelle le modèle avec un outil et retourne (résultat, tokens_in, tokens_out)."""
+    """
+    Appelle le modèle en mode JSON structuré.
+    Le schéma JSON est extrait de tool['input_schema'] et inclus dans le prompt.
+    Compatible avec les petits modèles locaux qui ne gèrent pas bien tool_use.
+    """
     client = get_client()
-    oai_tool = _to_openai_tool(tool)
+
+    # Inclure le schéma JSON dans le prompt système pour guider la réponse
+    schema_str = json.dumps(tool.get("input_schema", {}), ensure_ascii=False, indent=2)
+    enriched_system = (
+        f"{system}\n\n"
+        f"IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide respectant ce schéma :\n"
+        f"{schema_str}\n"
+        f"Ne mets aucun texte avant ou après le JSON. Pas de markdown, pas d'explication."
+    )
 
     response = await client.chat.completions.create(
         model=model,
         max_tokens=max_tokens,
-        tools=[oai_tool],
-        tool_choice={"type": "function", "function": {"name": tool["name"]}},
+        response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": system},
+            {"role": "system", "content": enriched_system},
             {"role": "user", "content": user},
         ],
     )
@@ -67,11 +82,14 @@ async def call_tool(
     tok_in = response.usage.prompt_tokens if response.usage else 0
     tok_out = response.usage.completion_tokens if response.usage else 0
 
-    tool_calls = response.choices[0].message.tool_calls
-    if not tool_calls:
-        raise ValueError(f"Le modèle n'a pas retourné d'appel d'outil (nom={tool['name']})")
-
-    result = json.loads(tool_calls[0].function.arguments)
+    content = response.choices[0].message.content or "{}"
+    try:
+        result = _extract_json(content)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            f"Le modèle n'a pas retourné un JSON valide (modèle={model}, outil={tool['name']}): {exc}\n"
+            f"Réponse brute : {content[:300]}"
+        ) from exc
 
     logger.debug(
         "llm_call",
